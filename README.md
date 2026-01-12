@@ -11,94 +11,69 @@
 
 ## 📋 Executive Summary
 
-This repository contains the complete simulation code for our VICEROY 2026 symposium poster demonstrating that **Hyperdimensional Computing (HDC)** provides **graceful degradation** (not immunity) against electronic warfare (EW) jamming attacks, outperforming traditional deep learning approaches.
+This repository contains the complete simulation code for our VICEROY 2026 symposium poster demonstrating that **Hyperdimensional Computing (HDC)** provides **graceful degradation** against electronic warfare (EW) jamming attacks, outperforming traditional deep learning approaches.
 
 ### Key Results at a Glance
 
 | Scenario | Attack Type | HDC Accuracy | MLP Accuracy | Interpretation |
 |----------|-------------|--------------|--------------|----------------|
 | **A** (σ²=0) | None (clean) | 100% | 98.7% | Both work well |
-| **A** (σ²=5) | Russian Broadband | **100%** | 57% | HDC resilient |
-| **B** (int=4) | US Precision | 49% | 22% | Both degraded |
-| **B** (int=20) | US Precision (extreme) | 22% | 23% | **Both fail** |
+| **A** (σ²=5) | Russian Broadband | **100%** | ~57% | HDC resilient |
+| **B** (int=4) | US Precision | ~49% | ~22% | Both degraded |
+| **B** (int=20) | US Precision (extreme) | ~22% | ~23% | **Both fail** |
 
 ---
 
-## 🔬 Why Does HDC Achieve 100% in Scenario A? (Mathematical Explanation)
+## 🔬 Why Does HDC Achieve 100% in Scenario A?
 
-We anticipated skepticism about the 100% accuracy under broadband noise. This is **not too good to be true**—it's a direct consequence of the mathematics. Here's the rigorous explanation:
+We anticipated skepticism about the 100% accuracy. This is **not too good to be true**—it's a direct consequence of the mathematics.
 
-### The Setup
+### The Corrected Signal-to-Noise Analysis
 
-- **Input dimension**: n = 50 features
-- **Hypervector dimension**: D = 10,000
-- **Encoding**: `h = sign(M @ x)` where M ∈ ℝ^(D×n), M[i,j] ~ N(0, 1/√D)
-- **Noise model** (Scenario A): x_noisy = x + ε, where ε ~ N(0, σ²I)
+**Previous versions incorrectly claimed "noise > signal." This is FALSE.**
 
-### Why It Works: The Signal-to-Noise Ratio Argument
+#### Signal Energy Calculation
+Each class centroid is generated as: `c ~ N(0, 3²)` per dimension
 
-For a clean input x and noise ε, the projection is:
+$$\mathbb{E}[\|c\|^2] = 3^2 \times 50 = 450$$
 
-```
-M @ x_noisy = M @ x + M @ ε
-              ↑         ↑
-           signal     noise
-```
+$$\mathbb{E}[\|c\|] = \sqrt{450} \approx 21.2$$
 
-**Key insight**: Both signal and noise are projected through the SAME random matrix M.
+#### Noise Energy Calculation (at σ² = 5)
+Noise is AWGN: `ε ~ N(0, σ²)` per dimension
 
-#### Signal Term: ||M @ x||²
-- Expected value: E[||M @ x||²] = ||x||² (variance-normalized projection)
-- For our dataset: ||x|| ≈ 3.0 (class centroids scaled by 3.0)
+$$\mathbb{E}[\|\varepsilon\|^2] = \sigma^2 \times 50 = 5 \times 50 = 250$$
 
-#### Noise Term: ||M @ ε||²  
-- Expected value: E[||M @ ε||²] = σ² × n (sum of n independent Gaussians)
-- At σ² = 5.0: E[||M @ ε||²] = 5.0 × 50 = 250
+#### Signal-to-Noise Ratio
 
-**Wait—the noise magnitude is LARGER than the signal!** So why does HDC still work?
+$$\text{SNR} = \frac{\text{Signal Energy}}{\text{Noise Energy}} = \frac{450}{250} = 1.8$$
 
-### The Sign Function: The Unsung Hero
+**The signal is STRONGER than the noise!**
 
-The critical step is `sign(M @ x_noisy)`. The sign function acts as a **majority vote** across dimensions:
+### Why the MLP Fails (Despite SNR > 1)
 
-1. Each dimension d of the projection is: `(M @ x)[d] + (M @ ε)[d]`
+The MLP fails NOT because noise overwhelms the signal, but because:
 
-2. The signal component `(M @ x)[d]` has **consistent direction** across all samples of the same class (because they're projected through the same M from similar inputs)
+1. **Distribution Shift**: Noise shifts inputs away from the training distribution. The MLP's learned decision boundaries are invalid in this out-of-distribution (OOD) region.
 
-3. The noise component `(M @ ε)[d]` is **random and independent** for each sample
+2. **Feature-Specific Learning**: MLP neurons learn to respond to specific input features. Corrupting those features breaks the learned representations.
 
-4. When we **bundle (sum) many training samples** to form the class prototype:
-   - Signal components **add constructively** (all point same direction)
-   - Noise components **cancel out** (random directions average to ~0)
+3. **No Implicit Normalization**: MLPs propagate the raw magnitude of noisy inputs through all layers, potentially causing saturation or numerical issues.
 
-### Quantitative Bound
+### Why HDC Survives
 
-For k training samples per class, the prototype's signal-to-noise ratio improves by √k:
+1. **Distributed Representation**: All 10,000 dimensions encode all features. There's no single point of failure.
 
-```
-SNR_prototype ≈ √k × SNR_single_sample
-```
+2. **Binary Quantization (The Hardware Limiter Effect)**:
+   ```
+   MLP sees:  value = 500.0 → activations explode/saturate
+   HDC sees:  value = 500.0 → sign(500) = +1 → normal operation
+   ```
+   The `sign()` function acts like a 1-bit ADC or limiter circuit in RF hardware.
 
-With k = 140 samples per class (700 training / 5 classes):
-- √140 ≈ 12× improvement in prototype SNR
-- Even if single-sample SNR < 1, prototype SNR >> 1
+3. **Prototype Averaging**: Bundling k=140 training samples improves prototype SNR by √k ≈ 12×. Training noise cancels; signal adds constructively.
 
-### Why the MLP Fails
-
-The MLP does NOT benefit from this averaging effect at inference time:
-1. Each test sample is classified individually
-2. No "prototype averaging" to cancel noise
-3. ReLU activations can saturate or explode with noisy inputs
-4. Learned weights are optimized for clean data distribution
-
-### The Limit of HDC Robustness
-
-HDC's 100% accuracy in Scenario A is **dataset-dependent**. It works because:
-1. Our classes are well-separated (centroid distance >> intra-class variance)
-2. The noise variance (σ² = 5) is still within the regime where sign() voting works
-3. We have enough training samples for good prototype averaging
-
-**At higher noise levels, HDC would also fail.** The 100% is not magic—it's the sweet spot of our experimental parameters.
+4. **Scaler (AGC Equivalent)**: `StandardScaler` normalizes inputs, analogous to Automatic Gain Control in real RF systems.
 
 ---
 
@@ -109,8 +84,8 @@ HDC's 100% accuracy in Scenario A is **dataset-dependent**. It works because:
 | Strength | Evidence | Mechanism |
 |----------|----------|-----------|
 | **Graceful degradation** | Accuracy drops smoothly, not catastrophically | Distributed representation prevents single points of failure |
-| **Noise averaging** | 100% accuracy at σ²=5 (Scenario A) | Random projection + prototype bundling cancels i.i.d. noise |
-| **Binary robustness** | sign() clips extreme values | Prevents numerical instability that affects MLPs |
+| **Noise resilience** | 100% accuracy at σ²=5 (Scenario A) | SNR > 1 + prototype averaging + sign() clipping |
+| **Binary robustness** | sign() clips extreme values to ±1 | Acts as hardware limiter, prevents numerical instability |
 | **Simple training** | No backprop, no hyperparameter tuning | Just matrix multiplication and summation |
 | **Interpretable** | Cosine similarity to prototypes | Direct geometric intuition |
 
@@ -118,43 +93,69 @@ HDC's 100% accuracy in Scenario A is **dataset-dependent**. It works because:
 
 | Weakness | Evidence | Implication |
 |----------|----------|-------------|
-| **Not immune to extreme noise** | 22% accuracy at intensity=20 (Scenario B) | Fails at ~random guess under concentrated attack |
-| **Precision jamming vulnerability** | Drops below 50% at intensity=4 | Targeted attacks are more effective than broadband |
-| **High memory footprint** | D=10,000 dimensions per prototype | 5 classes × 10,000 × 4 bytes = 200KB (acceptable but larger than MLP) |
-| **Binary quantization loses information** | sign() discards magnitude | May underperform on tasks requiring fine-grained distinctions |
-| **Projection matrix must be shared** | Training and inference need same M | Requires secure distribution of the projection matrix |
+| **Not immune to extreme noise** | ~22% accuracy at intensity=20 (Scenario B) | Fails at ~random guess under concentrated attack |
+| **Precision jamming vulnerability** | Drops below 50% at intensity≈4 | Targeted attacks more effective than broadband |
+| **High memory footprint** | D=10,000 dimensions per prototype | 5 classes × 10,000 × 4 bytes = 200KB |
+| **Dataset-dependent 100%** | Works because classes are well-separated | May not achieve 100% on harder classification tasks |
+| **No adversarial testing** | Only tested random noise | Optimized adversarial attacks not evaluated |
 
 ### ⚠️ Limitations of This Study
 
 1. **Synthetic dataset**: Real RF signatures may have different statistical properties
 2. **i.i.d. noise assumption**: Real jamming may have temporal/spectral structure
-3. **No adversarial attacks**: We tested random noise, not optimized adversarial perturbations
-4. **Fixed architecture**: We did not tune D, the projection matrix distribution, or encoding schemes
-5. **Single random seed**: Results may vary slightly with different random initializations
+3. **No adversarial attacks**: We tested random noise, not optimized perturbations
+4. **Fixed architecture**: We did not tune D, projection matrix, or encoding schemes
+5. **Single experimental setup**: Results may vary with different parameters
 
 ---
 
-## 🏗️ Repository Structure
+## 📁 Repository Structure
 
 ```
 VICEROY_2026_HDC_Sim/
 ├── README.md                           # This file
 ├── LICENSE                             # MIT License
 ├── requirements.txt                    # Python dependencies
+├── .gitignore                          # Git ignore rules
+│
 ├── viceroy_hdc_sim.py                 # V1: Original simulation (bit-flip noise)
-├── viceroy_hdc_v2.py                  # V2: Dual-doctrine simulation (RECOMMENDED)
-├── viceroy_2026_hdc_results.png       # V1 output visualization
-├── viceroy_2026_hdc_results.pdf       # V1 output (print quality)
-├── viceroy_2026_v2_dual_doctrine.png  # V2 output visualization
-└── viceroy_2026_v2_dual_doctrine.pdf  # V2 output (print quality)
+├── viceroy_hdc_v2.py                  # V2: Dual-doctrine simulation
+├── viceroy_hdc_v3.py                  # V3: Scientific rigor update (RECOMMENDED)
+│
+├── viceroy_2026_hdc_results.png       # V1 output
+├── viceroy_2026_hdc_results.pdf       # V1 output (print)
+├── viceroy_2026_v2_dual_doctrine.png  # V2 output
+├── viceroy_2026_v2_dual_doctrine.pdf  # V2 output (print)
+├── viceroy_2026_v3_dual_doctrine.png  # V3 output (LATEST)
+└── viceroy_2026_v3_dual_doctrine.pdf  # V3 output (print, LATEST)
 ```
+
+---
+
+## 🔄 Version History
+
+### V3 (Current - Scientific Rigor Update)
+- **Corrected SNR Analysis**: Signal energy (~450) > Noise energy (~250) at σ²=5
+- **RNG Isolation**: Local `RandomState` prevents experimental coupling
+- **Deterministic Encoding**: No random tie-breaking in `sign()`
+- **Unified Scaler Logic**: `encode()` respects `is_fitted` state
+- **Proper Notation**: σ² = variance, σ = standard deviation
+
+### V2
+- Random Projection architecture
+- Dual-doctrine EW scenarios
+- Fair comparison (same noisy tensor to both models)
+- Input normalization for HDC
+
+### V1
+- Original bit-flip noise model
+- Basic HDC vs MLP comparison
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-
 - Python 3.10 or higher
 - pip package manager
 
@@ -176,37 +177,31 @@ pip install -r requirements.txt
 ### Run the Simulation
 
 ```bash
-# Run V2 (recommended - dual doctrine comparison)
+# Run V3 (RECOMMENDED - scientifically rigorous)
+python viceroy_hdc_v3.py
+
+# Run V2 (dual doctrine, previous version)
 python viceroy_hdc_v2.py
 
-# Run V1 (original bit-flip noise simulation)
+# Run V1 (original, bit-flip model)
 python viceroy_hdc_sim.py
 ```
-
-### Expected Output
-
-The simulation will:
-1. Run verification tests to validate HDC mathematical properties
-2. Train both HDC and MLP models on clean data
-3. Test both models under increasing noise levels
-4. Generate publication-quality visualizations (PNG + PDF)
-5. Print detailed performance summaries
 
 ---
 
 ## 📐 Technical Details
 
-### HDC Architecture (V2)
+### HDC Architecture (V3)
 
 ```python
-class HDCLearnerV2:
+class HDCLearnerV3:
     """
-    Random Projection HDC with input normalization.
+    Random Projection HDC with proper input scaling.
     
     Encoding: h = sign(M @ normalize(x))
-    - M ∈ ℝ^(D×n), M[i,j] ~ N(0, 1/√D)
-    - normalize() = StandardScaler (zero mean, unit variance)
-    - sign() = bipolar quantization to {-1, +1}
+    - M ∈ ℝ^(D×n), M[i,j] ~ N(0, 1/D)
+    - normalize() = StandardScaler (fitted on training data)
+    - sign() = deterministic bipolar quantization
     """
 ```
 
@@ -217,40 +212,38 @@ class HDCLearnerV2:
 | A | Broadband AWGN | σ² ∈ [0, 5] on all features | Krasukha-4 area denial |
 | B | Precision sweep | 10× intensity on 20% of features, rotating | AN/ALQ-249 surgical jamming |
 
-### Why Random Projection?
+### Key Mathematical Properties
 
-The **Johnson-Lindenstrauss Lemma** guarantees that random projection approximately preserves distances:
-
-> For any ε > 0 and n points, a random projection into D = O(log(n)/ε²) dimensions preserves all pairwise distances within factor (1±ε).
-
-For our D = 10,000, this provides excellent distance preservation, meaning similar inputs produce similar hypervectors.
+| Property | Formula | Implication |
+|----------|---------|-------------|
+| Signal Energy | ‖c‖² = 9 × 50 = 450 | Strong class separation |
+| Noise Energy | σ² × 50 | At σ²=5: 250 |
+| SNR at σ²=5 | 450/250 = 1.8 | Signal dominates |
+| Prototype SNR boost | √k ≈ 12× | Bundling improves robustness |
 
 ---
 
-## 📈 Reproducing Our Results
+## 🎤 Talk Track for Presentation
 
-The simulation uses fixed random seeds for reproducibility:
+When presenting this work, use these scientifically accurate talking points:
 
-```python
-np.random.seed(2026)  # Main simulation seed
-np.random.seed(42)    # Class centroid generation
-```
+### On the 100% Accuracy
+> "HDC achieves 100% accuracy at σ²=5 because the signal is actually **stronger** than the noise—SNR is about 1.8. The MLP fails not because the signal is buried, but because noise shifts the inputs away from its training distribution."
 
-Expected results (may vary ±2% due to MLP training stochasticity):
+### On the sign() Function
+> "The `sign()` function in HDC acts like a **hardware limiter**. When the MLP sees a corrupted value of 500, its activations explode. When HDC sees 500, it simply outputs +1 and continues normally. This is analogous to a 1-bit ADC in RF systems."
 
-**Scenario A (Broadband)**:
-- HDC: 100% (σ²=0) → 100% (σ²=5)
-- MLP: 98.7% (σ²=0) → 57% (σ²=5)
+### On Input Normalization
+> "We use `StandardScaler` to normalize inputs before projection. This is equivalent to **Automatic Gain Control (AGC)** in real RF receivers—it ensures the random projection operates on properly scaled data."
 
-**Scenario B (Precision)**:
-- HDC: 100% (int=0) → 22% (int=20)
-- MLP: 98.7% (int=0) → 23% (int=20)
+### On Honest Limitations
+> "HDC is not immune to noise. In Scenario B with intensity above 10, HDC also fails—it just degrades more gracefully than the MLP. This is **graceful degradation**, not immunity."
 
 ---
 
 ## 📚 References
 
-1. Kanerva, P. (2009). "Hyperdimensional Computing: An Introduction to Computing in Distributed Representation with High-Dimensional Random Vectors." *Cognitive Computation*.
+1. Kanerva, P. (2009). "Hyperdimensional Computing: An Introduction to Computing in Distributed Representation." *Cognitive Computation*.
 
 2. Rahimi, A., et al. (2016). "A Robust and Energy-Efficient Classifier Using Brain-Inspired Hyperdimensional Computing." *ISLPED*.
 
@@ -285,13 +278,6 @@ If you use this code in your research, please cite:
   url = {https://github.com/CisnerosCodes/VICEROY_2026_HDC_Sim}
 }
 ```
-
----
-
-## 📞 Contact
-
-**VICEROY 2026 Symposium Poster Session**  
-*DoD/Academic Partnership Initiative*
 
 ---
 
