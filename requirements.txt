@@ -1,0 +1,6 @@
+# VICEROY 2026 HDC Simulation - Dependencies
+# Python 3.10+ required
+
+numpy>=1.24.0
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
