@@ -669,6 +669,137 @@ def run_noise_sweep(hdc_model, X_test, y_test, noise_levels, n_trials=5, verbose
 
 
 # =============================================================================
+# MLP NOISE SWEEP BENCHMARK
+# =============================================================================
+
+def run_mlp_noise_sweep(mlp_model, X_test, y_test, noise_levels, n_trials=5, verbose=True):
+    """
+    Sweep hardware defect rates and measure MLP accuracy degradation.
+
+    Identical methodology to the HDC sweep: corrupt the trained weights
+    (sklearn MLPClassifier.coefs_ and intercepts_) using the same
+    HardwareDefectSimulator, measure accuracy, report mean ± std.
+
+    This replaces the literature-based estimate with EMPIRICAL measurement
+    using the SAME simulator — removing the most obvious methodological
+    criticism ("you estimated MLP but measured HDC").
+
+    Args:
+        mlp_model: Trained SteelManMLP instance
+        X_test: Test features (raw IQ, pre-DSP)
+        y_test: Test labels
+        noise_levels: List of defect rates to sweep [0.0 ... 0.20]
+        n_trials: Number of random trials per noise level
+        verbose: Print progress
+
+    Returns:
+        results: Dict with accuracy arrays per corruption mode
+    """
+    import copy
+
+    # Save clean weights (deep copy — list of numpy arrays)
+    clean_coefs = [w.copy() for w in mlp_model.model.coefs_]
+    clean_intercepts = [b.copy() for b in mlp_model.model.intercepts_]
+
+    results = {
+        "noise_levels": [float(n) for n in noise_levels],
+        "stuck_at_accuracy_mean": [],
+        "stuck_at_accuracy_std": [],
+        "analog_noise_accuracy_mean": [],
+        "analog_noise_accuracy_std": [],
+        "combined_accuracy_mean": [],
+        "combined_accuracy_std": [],
+    }
+
+    def _corrupt_mlp_weights(sim, mode, defect_rate):
+        """Apply HardwareDefectSimulator to all MLP weight matrices."""
+        for i in range(len(clean_coefs)):
+            if mode == "stuck_at":
+                mlp_model.model.coefs_[i] = sim.inject_stuck_at_faults(
+                    clean_coefs[i], defect_rate
+                )
+                mlp_model.model.intercepts_[i] = sim.inject_stuck_at_faults(
+                    clean_intercepts[i].reshape(1, -1), defect_rate
+                ).flatten()
+            elif mode == "analog":
+                mlp_model.model.coefs_[i] = sim.inject_analog_noise(
+                    clean_coefs[i], defect_rate
+                )
+                mlp_model.model.intercepts_[i] = sim.inject_analog_noise(
+                    clean_intercepts[i].reshape(1, -1), defect_rate
+                ).flatten()
+            elif mode == "combined":
+                mlp_model.model.coefs_[i] = sim.inject_combined(
+                    clean_coefs[i], defect_rate
+                )
+                mlp_model.model.intercepts_[i] = sim.inject_combined(
+                    clean_intercepts[i].reshape(1, -1), defect_rate
+                ).flatten()
+
+    def _restore_mlp_weights():
+        """Restore clean weights."""
+        for i in range(len(clean_coefs)):
+            mlp_model.model.coefs_[i] = clean_coefs[i].copy()
+            mlp_model.model.intercepts_[i] = clean_intercepts[i].copy()
+
+    if verbose:
+        print()
+        print(f"  {'Defect %':<10} {'Stuck-At':<18} {'Analog Noise':<18} {'Combined':<18}")
+        print(f"  {'-'*8:<10} {'-'*16:<18} {'-'*16:<18} {'-'*16:<18}")
+
+    for noise_rate in noise_levels:
+        stuck_accs = []
+        analog_accs = []
+        combined_accs = []
+
+        for trial in range(n_trials):
+            # --- Stuck-at faults ---
+            sim = HardwareDefectSimulator(seed=3000 + trial)
+            _corrupt_mlp_weights(sim, "stuck_at", noise_rate)
+            acc = mlp_model.accuracy(X_test, y_test)
+            stuck_accs.append(acc)
+            _restore_mlp_weights()
+
+            # --- Analog noise ---
+            sim2 = HardwareDefectSimulator(seed=4000 + trial)
+            _corrupt_mlp_weights(sim2, "analog", noise_rate)
+            acc = mlp_model.accuracy(X_test, y_test)
+            analog_accs.append(acc)
+            _restore_mlp_weights()
+
+            # --- Combined ---
+            sim3 = HardwareDefectSimulator(seed=5000 + trial)
+            _corrupt_mlp_weights(sim3, "combined", noise_rate)
+            acc = mlp_model.accuracy(X_test, y_test)
+            combined_accs.append(acc)
+            _restore_mlp_weights()
+
+        stuck_mean, stuck_std = np.mean(stuck_accs), np.std(stuck_accs)
+        analog_mean, analog_std = np.mean(analog_accs), np.std(analog_accs)
+        combined_mean, combined_std = np.mean(combined_accs), np.std(combined_accs)
+
+        results["stuck_at_accuracy_mean"].append(round(float(stuck_mean), 4))
+        results["stuck_at_accuracy_std"].append(round(float(stuck_std), 4))
+        results["analog_noise_accuracy_mean"].append(round(float(analog_mean), 4))
+        results["analog_noise_accuracy_std"].append(round(float(analog_std), 4))
+        results["combined_accuracy_mean"].append(round(float(combined_mean), 4))
+        results["combined_accuracy_std"].append(round(float(combined_std), 4))
+
+        if verbose:
+            print(
+                f"  {noise_rate*100:>5.1f}%    "
+                f"{stuck_mean*100:>5.1f}% ± {stuck_std*100:>4.1f}%    "
+                f"{analog_mean*100:>5.1f}% ± {analog_std*100:>4.1f}%    "
+                f"{combined_mean*100:>5.1f}% ± {combined_std*100:>4.1f}%"
+            )
+
+    # Final restore (safety)
+    _restore_mlp_weights()
+
+    return results
+
+
+# =============================================================================
 # MAIN EXECUTION
 # =============================================================================
 
@@ -804,39 +935,47 @@ Examples:
     )
 
     # =========================================================================
-    # PHASE 4: MLP FRAGILE BASELINE (Literature Curve)
+    # PHASE 4: TRAIN MLP + REAL DEFECT SWEEP
     # =========================================================================
     print()
     print("=" * 70)
-    print("PHASE 4: MLP Fragile Baseline (Literature-Based Degradation)")
+    print("PHASE 4: Steel Man MLP — Training + Hardware Defect Sweep")
     print("=" * 70)
-
-    # Use HDC clean accuracy as MLP clean accuracy (generous assumption)
-    mlp_clean_acc = clean_accuracy  # Give MLP the same clean baseline
-    mlp_estimated = []
-
+    print("  Training MLP on clean data, then corrupting weights with the")
+    print("  SAME HardwareDefectSimulator used for HDC (apples-to-apples).")
     print()
-    print(f"  {'Defect %':<10} {'MLP Estimated':<18} {'HDC Combined':<18} {'Δ (HDC-MLP)':<12}")
-    print(f"  {'-'*8:<10} {'-'*16:<18} {'-'*16:<18} {'-'*10:<12}")
 
+    mlp_train_start = time.perf_counter()
+    mlp = SteelManMLP(seed=42)
+    mlp.train(X_train, y_train, adversarial=True, verbose=True)
+    mlp_train_time = time.perf_counter() - mlp_train_start
+
+    mlp_clean_accuracy = mlp.accuracy(X_test_high, y_test_high)
+    print(f"\n  MLP Clean Baseline Accuracy: {mlp_clean_accuracy * 100:.2f}%")
+    print(f"  MLP Training Time: {mlp_train_time:.2f}s")
+    print()
+
+    print("  Running MLP through HardwareDefectSimulator ...")
+    print(f"  Trials per noise level: {args.trials}")
+
+    mlp_sweep_results = run_mlp_noise_sweep(
+        mlp, X_test_high, y_test_high, noise_levels,
+        n_trials=args.trials, verbose=True,
+    )
+
+    # Print side-by-side comparison
+    print()
+    print("  ┌─────────────────────────────────────────────────────────────────┐")
+    print("  │             HDC vs MLP — Combined Defect Comparison            │")
+    print("  ├─────────────────────────────────────────────────────────────────┤")
+    print(f"  │  {'Defect %':<10} {'HDC Combined':<18} {'MLP Combined':<18} {'Δ':<10} │")
+    print(f"  │  {'-'*8:<10} {'-'*16:<18} {'-'*16:<18} {'-'*8:<10} │")
     for i, noise_rate in enumerate(noise_levels):
-        mlp_acc = mlp_estimated_degradation(mlp_clean_acc, noise_rate)
-        mlp_estimated.append(round(float(mlp_acc), 4))
-
-        hdc_acc = sweep_results["combined_accuracy_mean"][i]
+        hdc_acc = sweep_results["combined_accuracy_mean"][i] * 100
+        mlp_acc = mlp_sweep_results["combined_accuracy_mean"][i] * 100
         delta = hdc_acc - mlp_acc
-
-        print(
-            f"  {noise_rate*100:>5.1f}%    "
-            f"{mlp_acc*100:>5.1f}%             "
-            f"{hdc_acc*100:>5.1f}%             "
-            f"{delta*100:>+5.1f}%"
-        )
-
-    print()
-    print("  NOTE: MLP curve based on Ganapathy (DAC 2019) & Liu (MLSys 2021)")
-    print("        DNN weights degrade exponentially under stuck-at/noise faults.")
-    print("        HDC prototypes are inherently noise-tolerant (distributed codes).")
+        print(f"  │  {noise_rate*100:>5.1f}%    {hdc_acc:>5.1f}%             {mlp_acc:>5.1f}%             {delta:>+5.1f}pp │")
+    print("  └─────────────────────────────────────────────────────────────────┘")
     print()
 
     # =========================================================================
@@ -917,8 +1056,8 @@ Examples:
         # ---- PRIMARY OUTPUT (matches spec) ----
         "noise_levels": [round(n * 100, 1) for n in noise_levels],
         "hdc_accuracy": [round(a * 100, 2) for a in sweep_results["combined_accuracy_mean"]],
-        "mlp_estimated_accuracy": [round(a * 100, 2) for a in mlp_estimated],
-        # ---- DETAILED NOISE SWEEP ----
+        "mlp_accuracy": [round(a * 100, 2) for a in mlp_sweep_results["combined_accuracy_mean"]],
+        # ---- DETAILED NOISE SWEEP — HDC ----
         "noise_sweep_detailed": {
             "noise_levels_fraction": sweep_results["noise_levels"],
             "stuck_at": {
@@ -934,12 +1073,30 @@ Examples:
                 "accuracy_std": sweep_results["combined_accuracy_std"],
             },
         },
+        # ---- DETAILED NOISE SWEEP — MLP ----
+        "mlp_sweep_detailed": {
+            "noise_levels_fraction": mlp_sweep_results["noise_levels"],
+            "stuck_at": {
+                "accuracy_mean": mlp_sweep_results["stuck_at_accuracy_mean"],
+                "accuracy_std": mlp_sweep_results["stuck_at_accuracy_std"],
+            },
+            "analog_noise": {
+                "accuracy_mean": mlp_sweep_results["analog_noise_accuracy_mean"],
+                "accuracy_std": mlp_sweep_results["analog_noise_accuracy_std"],
+            },
+            "combined": {
+                "accuracy_mean": mlp_sweep_results["combined_accuracy_mean"],
+                "accuracy_std": mlp_sweep_results["combined_accuracy_std"],
+            },
+        },
         # ---- ENERGY MODEL ----
         "energy_model": energy_report,
         # ---- TRAINING METADATA ----
         "training": {
-            "clean_accuracy_percent": round(clean_accuracy * 100, 2),
-            "training_time_seconds": round(train_time, 2),
+            "hdc_clean_accuracy_percent": round(clean_accuracy * 100, 2),
+            "hdc_training_time_seconds": round(train_time, 2),
+            "mlp_clean_accuracy_percent": round(mlp_clean_accuracy * 100, 2),
+            "mlp_training_time_seconds": round(mlp_train_time, 2),
         },
     }
 
@@ -965,22 +1122,22 @@ Examples:
     # Quick summary for the Chief Scientist
     acc_at_20 = sweep_results["combined_accuracy_mean"][-1] * 100
     acc_drop = (clean_accuracy - sweep_results["combined_accuracy_mean"][-1]) * 100
-    mlp_at_10 = mlp_estimated[3] * 100  # MLP at 10% defect rate
+    mlp_at_20 = mlp_sweep_results["combined_accuracy_mean"][-1] * 100
+    mlp_drop = (mlp_clean_accuracy - mlp_sweep_results["combined_accuracy_mean"][-1]) * 100
+    mlp_at_10 = mlp_sweep_results["combined_accuracy_mean"][3] * 100
     hdc_at_10 = sweep_results["combined_accuracy_mean"][3] * 100
     print("EXECUTIVE SUMMARY:")
     print(f"  • HDC retains {acc_at_20:.1f}% accuracy at 20% hardware defects "
           f"(only {acc_drop:.1f}pp drop)")
-    print(f"  • MLP collapses to ~{mlp_estimated[-1]*100:.0f}% (random chance) "
-          f"at the same defect rate")
+    print(f"  • MLP drops to {mlp_at_20:.1f}% at 20% defects "
+          f"({mlp_drop:.1f}pp drop)")
     print(f"  • At realistic 10% defect rate: HDC={hdc_at_10:.1f}% vs MLP={mlp_at_10:.1f}% "
-          f"(+{hdc_at_10-mlp_at_10:.1f}pp)")
+          f"({hdc_at_10-mlp_at_10:+.1f}pp)")
     print()
-    print("  DEPLOYMENT ARGUMENT:")
-    print("    On clean silicon, MLP is more energy-efficient.")
-    print("    On NOISY IMC hardware (which is the whole point of IMC),")
-    print("    MLP accuracy collapses — making its energy efficiency meaningless.")
-    print("    HDC is the only algorithm that WORKS on defective hardware,")
-    print("    making it the only viable option for real-world IMC deployment.")
+    print("  METHODOLOGY:")
+    print("    Both models tested with the SAME HardwareDefectSimulator.")
+    print("    MLP weights (coefs_ + intercepts_) corrupted identically to")
+    print("    HDC prototypes. No estimation — all measurements are empirical.")
     print()
 
     return 0

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-07T14:16:00.472634",
+  "timestamp": "2026-02-07T15:53:39.440044",
   "configuration": {
     "rff_dim": 10000,
     "internal_dim": 20000,
@@ -31,12 +31,12 @@
     62.19,
     61.23
   ],
-  "mlp_estimated_accuracy": [
-    62.99,
-    58.15,
-    42.22,
-    28.3,
-    20.0
+  "mlp_accuracy": [
+    83.9,
+    82.13,
+    74.15,
+    68.66,
+    55.24
   ],
   "noise_sweep_detailed": {
     "noise_levels_fraction": [
@@ -92,6 +92,63 @@
         0.0008,
         0.0004,
         0.001
+      ]
+    }
+  },
+  "mlp_sweep_detailed": {
+    "noise_levels_fraction": [
+      0.0,
+      0.01,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "stuck_at": {
+      "accuracy_mean": [
+        0.839,
+        0.7704,
+        0.6684,
+        0.552,
+        0.4055
+      ],
+      "accuracy_std": [
+        0.0,
+        0.0349,
+        0.0273,
+        0.0552,
+        0.0486
+      ]
+    },
+    "analog_noise": {
+      "accuracy_mean": [
+        0.839,
+        0.8391,
+        0.8393,
+        0.8389,
+        0.8377
+      ],
+      "accuracy_std": [
+        0.0,
+        0.0001,
+        0.0002,
+        0.0007,
+        0.001
+      ]
+    },
+    "combined": {
+      "accuracy_mean": [
+        0.839,
+        0.8213,
+        0.7415,
+        0.6866,
+        0.5524
+      ],
+      "accuracy_std": [
+        0.0,
+        0.0026,
+        0.0146,
+        0.0182,
+        0.0259
       ]
     }
   },
@@ -153,7 +210,9 @@
     }
   },
   "training": {
-    "clean_accuracy_percent": 62.99,
-    "training_time_seconds": 114.29
+    "hdc_clean_accuracy_percent": 62.99,
+    "hdc_training_time_seconds": 32.52,
+    "mlp_clean_accuracy_percent": 83.9,
+    "mlp_training_time_seconds": 338.51
   }
 }

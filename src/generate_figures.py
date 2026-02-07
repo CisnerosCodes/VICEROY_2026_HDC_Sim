@@ -142,34 +142,34 @@ def plot_accuracy_vs_snr(v6, ax=None):
 # FIGURE 2 — Hardware Robustness  (Noise Sweep)
 # ═══════════════════════════════════════════════════════════════════════════
 def plot_hardware_robustness(hw, ax=None):
-    """HDC noise sweep (stuck-at, analog, combined) vs MLP estimated collapse."""
+    """HDC & MLP noise sweep — stuck-at, analog, combined — apples-to-apples."""
     standalone = ax is None
     if standalone:
-        fig, ax = plt.subplots(figsize=(8, 4.5))
+        fig, ax = plt.subplots(figsize=(10, 5.5))
 
     sweep = hw["noise_sweep_detailed"]
     noise_pct = [x * 100 for x in sweep["noise_levels_fraction"]]
 
+    # --- HDC curves ---
     stuck_mean = [x * 100 for x in sweep["stuck_at"]["accuracy_mean"]]
     stuck_std  = [x * 100 for x in sweep["stuck_at"]["accuracy_std"]]
     analog_mean = [x * 100 for x in sweep["analog_noise"]["accuracy_mean"]]
     analog_std  = [x * 100 for x in sweep["analog_noise"]["accuracy_std"]]
     combined_mean = [x * 100 for x in sweep["combined"]["accuracy_mean"]]
     combined_std  = [x * 100 for x in sweep["combined"]["accuracy_std"]]
-    mlp_acc = hw["mlp_estimated_accuracy"]
 
-    # HDC defect modes with error bands
+    # HDC error bands + lines
     ax.fill_between(noise_pct,
                     np.array(stuck_mean) - np.array(stuck_std),
                     np.array(stuck_mean) + np.array(stuck_std),
-                    alpha=0.15, color=COLORS["stuck_at"])
+                    alpha=0.12, color=COLORS["stuck_at"])
     ax.plot(noise_pct, stuck_mean, "^-", color=COLORS["stuck_at"],
-            linewidth=1.5, markersize=5, label="HDC — Stuck-at faults")
+            linewidth=1.5, markersize=5, label="HDC — Stuck-at")
 
     ax.fill_between(noise_pct,
                     np.array(analog_mean) - np.array(analog_std),
                     np.array(analog_mean) + np.array(analog_std),
-                    alpha=0.15, color=COLORS["analog"])
+                    alpha=0.12, color=COLORS["analog"])
     ax.plot(noise_pct, analog_mean, "d-", color=COLORS["analog"],
             linewidth=1.5, markersize=5, label="HDC — Analog noise")
 
@@ -178,38 +178,76 @@ def plot_hardware_robustness(hw, ax=None):
                     np.array(combined_mean) + np.array(combined_std),
                     alpha=0.15, color=COLORS["combined"])
     ax.plot(noise_pct, combined_mean, "o-", color=COLORS["combined"],
-            linewidth=2.2, markersize=6, label="HDC — Combined",
-            zorder=4)
+            linewidth=2.2, markersize=6, label="HDC — Combined", zorder=4)
 
-    # MLP collapse
-    ax.plot(noise_pct, mlp_acc, "s--", color=COLORS["mlp"], linewidth=2,
-            markersize=6, label="MLP — Estimated (all defects)", zorder=3)
+    # --- MLP curves (empirical if available, else estimated) ---
+    mlp_sweep = hw.get("mlp_sweep_detailed")
+    if mlp_sweep:
+        # Full empirical MLP breakdown — same simulator, same methodology
+        mlp_stuck_mean = [x * 100 for x in mlp_sweep["stuck_at"]["accuracy_mean"]]
+        mlp_stuck_std  = [x * 100 for x in mlp_sweep["stuck_at"]["accuracy_std"]]
+        mlp_analog_mean = [x * 100 for x in mlp_sweep["analog_noise"]["accuracy_mean"]]
+        mlp_analog_std  = [x * 100 for x in mlp_sweep["analog_noise"]["accuracy_std"]]
+        mlp_combined_mean = [x * 100 for x in mlp_sweep["combined"]["accuracy_mean"]]
+        mlp_combined_std  = [x * 100 for x in mlp_sweep["combined"]["accuracy_std"]]
+
+        ax.fill_between(noise_pct,
+                        np.array(mlp_stuck_mean) - np.array(mlp_stuck_std),
+                        np.array(mlp_stuck_mean) + np.array(mlp_stuck_std),
+                        alpha=0.10, color="#e6550d")
+        ax.plot(noise_pct, mlp_stuck_mean, "^--", color="#e6550d",
+                linewidth=1.5, markersize=5, label="MLP — Stuck-at")
+
+        ax.fill_between(noise_pct,
+                        np.array(mlp_analog_mean) - np.array(mlp_analog_std),
+                        np.array(mlp_analog_mean) + np.array(mlp_analog_std),
+                        alpha=0.10, color="#fdae6b")
+        ax.plot(noise_pct, mlp_analog_mean, "d--", color="#fdae6b",
+                linewidth=1.5, markersize=5, label="MLP — Analog noise")
+
+        ax.fill_between(noise_pct,
+                        np.array(mlp_combined_mean) - np.array(mlp_combined_std),
+                        np.array(mlp_combined_mean) + np.array(mlp_combined_std),
+                        alpha=0.12, color=COLORS["mlp"])
+        ax.plot(noise_pct, mlp_combined_mean, "s--", color=COLORS["mlp"],
+                linewidth=2.2, markersize=6, label="MLP — Combined", zorder=3)
+
+        mlp_final = mlp_combined_mean[-1]
+        delta_mlp = mlp_combined_mean[0] - mlp_combined_mean[-1]
+    else:
+        # Fallback: single estimated curve (legacy JSON)
+        mlp_acc = hw.get("mlp_estimated_accuracy", hw.get("mlp_accuracy", []))
+        ax.plot(noise_pct, mlp_acc, "s--", color=COLORS["mlp"], linewidth=2,
+                markersize=6, label="MLP — Combined (est.)", zorder=3)
+        mlp_final = mlp_acc[-1]
+        delta_mlp = mlp_acc[0] - mlp_acc[-1]
 
     # Chance line
     ax.axhline(20, color=COLORS["chance"], linestyle=":", linewidth=1,
                label="Chance (20%)", zorder=1)
 
-    # Annotation: the key story
+    # Annotations
     delta_hdc = combined_mean[0] - combined_mean[-1]
-    delta_mlp = mlp_acc[0] - mlp_acc[-1]
-    ax.annotate(f"HDC drops {delta_hdc:.1f} pp",
+    ax.annotate(f"HDC: −{delta_hdc:.1f} pp",
                 xy=(noise_pct[-1], combined_mean[-1]),
-                xytext=(12, 55), fontsize=9, color=COLORS["hdc"],
-                fontweight="bold",
+                xytext=(noise_pct[-1] + 1.5, combined_mean[-1] + 6),
+                fontsize=9, color=COLORS["hdc"], fontweight="bold",
                 arrowprops=dict(arrowstyle="->", color=COLORS["hdc"], lw=1.2))
-    ax.annotate(f"MLP drops {delta_mlp:.1f} pp",
-                xy=(noise_pct[-1], mlp_acc[-1]),
-                xytext=(12, 30), fontsize=9, color=COLORS["mlp"],
-                fontweight="bold",
+    ax.annotate(f"MLP: −{delta_mlp:.1f} pp",
+                xy=(noise_pct[-1], mlp_final),
+                xytext=(noise_pct[-1] + 1.5, mlp_final + 6),
+                fontsize=9, color=COLORS["mlp"], fontweight="bold",
                 arrowprops=dict(arrowstyle="->", color=COLORS["mlp"], lw=1.2))
 
     ax.set_xlabel("Hardware Defect Rate (%)")
     ax.set_ylabel("Accuracy (%)")
     ax.set_title("Hardware Robustness — IMC Defect Tolerance\n"
-                 "(Digital Twin Noise Sweep, 5 trials/level)")
-    ax.set_ylim(0, 75)
-    ax.set_xlim(-0.5, noise_pct[-1] + 1)
-    ax.legend(loc="lower left", fontsize=9, framealpha=0.9)
+                 "(Same simulator for both models, 5 trials/level)")
+    ymax = max(combined_mean[0], mlp_sweep["combined"]["accuracy_mean"][0] * 100
+               if mlp_sweep else 65) + 10
+    ax.set_ylim(0, ymax)
+    ax.set_xlim(-0.5, noise_pct[-1] + 8)
+    ax.legend(loc="upper right", fontsize=8.5, framealpha=0.9, ncol=2)
     ax.grid(axis="y", alpha=0.3)
 
     if standalone:
@@ -344,8 +382,20 @@ def plot_summary_dashboard(v6, hw):
         clean = sweep["combined"]["accuracy_mean"][0] * 100
         noisy = sweep["combined"]["accuracy_mean"][-1] * 100
         rows.append(["HDC at 20% Defects", f"{noisy:.1f}%  (−{clean - noisy:.1f} pp)"])
-        rows.append(["MLP at 20% Defects",
-                      f"{hw['mlp_estimated_accuracy'][-1]:.1f}%  (collapsed)"])
+
+        # MLP at 20% defects — use empirical if available, else estimated
+        mlp_sweep = hw.get("mlp_sweep_detailed")
+        if mlp_sweep:
+            mlp_clean = mlp_sweep["combined"]["accuracy_mean"][0] * 100
+            mlp_noisy = mlp_sweep["combined"]["accuracy_mean"][-1] * 100
+            rows.append(["MLP at 20% Defects",
+                          f"{mlp_noisy:.1f}%  (−{mlp_clean - mlp_noisy:.1f} pp)"])
+        else:
+            mlp_acc_key = hw.get("mlp_estimated_accuracy", hw.get("mlp_accuracy", []))
+            if mlp_acc_key:
+                rows.append(["MLP at 20% Defects",
+                              f"{mlp_acc_key[-1]:.1f}%  (collapsed)"])
+
         hdc_batt = hw["energy_model"]["hdc_rff"]["imc_battery_life_hours"]
         rows.append(["HDC Battery Life (10 Wh, IMC)",
                       f"{hdc_batt:,.0f} hrs"])
