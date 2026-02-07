@@ -247,27 +247,34 @@ def plot_energy_comparison(hw, ax=None):
     bars_mlp = ax.bar(x + width/2, mlp_vals, width, label="Steel Man MLP",
                       color=COLORS["mlp"], edgecolor="white", linewidth=0.5)
 
-    # Value labels on bars
+    # Value labels on bars — lift tiny bars so the label is readable
+    ymax = max(hdc_cpu, mlp_cpu, hdc_imc, mlp_imc_total)
+    label_floor = ymax * 0.08  # minimum height before we offset the label
+
     for bar in bars_hdc:
         h = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2, h + 0.05,
+        label_y = max(h, label_floor) + ymax * 0.01
+        ax.text(bar.get_x() + bar.get_width()/2, label_y,
                 f"{h:.2f}" if h < 1 else f"{h:.1f}",
                 ha="center", va="bottom", fontsize=9, color=COLORS["hdc"],
                 fontweight="bold")
     for bar in bars_mlp:
         h = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2, h + 0.05,
+        label_y = max(h, label_floor) + ymax * 0.01
+        ax.text(bar.get_x() + bar.get_width()/2, label_y,
                 f"{h:.2f}" if h < 1 else f"{h:.1f}",
                 ha="center", va="bottom", fontsize=9, color=COLORS["mlp"],
                 fontweight="bold")
 
-    # MLP overhead annotation on IMC bar
+    # MLP overhead annotation — placed above bar with arrow since bar is tiny
     overhead_pct = (e["mlp_baseline"]["imc_overhead_pj"] /
                     e["mlp_baseline"]["imc_total_energy_pj"]) * 100
-    ax.text(x[1] + width/2, mlp_imc_total * 0.5,
-            f"ADC/DAC\noverhead\n{overhead_pct:.0f}%",
-            ha="center", va="center", fontsize=7.5, color="white",
-            fontweight="bold")
+    ax.annotate(f"  {mlp_imc_total:.3f} µJ\n  ({overhead_pct:.0f}% ADC/DAC)",
+                xy=(x[1] + width/2, mlp_imc_total),
+                xytext=(x[1] + width/2 + 0.25, ymax * 0.30),
+                fontsize=8.5, color=COLORS["mlp"], fontweight="bold",
+                arrowprops=dict(arrowstyle="->", color=COLORS["mlp"], lw=1.2),
+                va="center", ha="left")
 
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
