@@ -68,7 +68,7 @@ SAMPLES_PER_COMMAND = 200  # Training samples per class (synthetic mode)
 FEATURE_DIM = 50  # Input feature dimensionality (synthetic mode)
 
 # RadioML configuration
-RADIOML_PATH = "./.data/RML2016.10a_dict.pkl"
+RADIOML_PATH = os.path.join(os.path.dirname(__file__), "..", ".data", "RML2016.10a_dict.pkl")
 RADIOML_HIGH_SNR_THRESHOLD = 10  # Train on SNR >= +10dB
 RADIOML_MODULATIONS = ['8PSK', 'AM-DSB', 'AM-SSB', 'BPSK', 'CPFSK', 
                         'GFSK', 'PAM4', 'QAM16', 'QAM64', 'QPSK', 'WBFM']

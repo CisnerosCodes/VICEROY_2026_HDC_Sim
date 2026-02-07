@@ -7,7 +7,7 @@
 
 $TOWER1 = "adrian@192.168.12.102"
 $TOWER2 = "adrian@10.0.0.2"
-$LOCAL_SCRIPT = "C:\Users\adria\Projects\VICEROY_2026_HDC_Sim\viceroy_hdc_v6_final.py"
+$LOCAL_SCRIPT = "C:\Users\adria\Projects\VICEROY_2026_HDC_Sim\src\viceroy_hdc_v6_final.py"
 $LOCAL_DATA = "C:\Users\adria\Projects\VICEROY_2026_HDC_Sim\.data\RML2016.10a_dict.pkl"
 
 Write-Host ""

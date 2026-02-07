@@ -65,7 +65,7 @@ D = 10000  # Hypervector dimensionality
 RFF_GAMMA = 0.1  # RBF kernel bandwidth parameter
 
 # RadioML configuration
-RADIOML_PATH = "./.data/RML2016.10a_dict.pkl"
+RADIOML_PATH = os.path.join(os.path.dirname(__file__), "..", ".data", "RML2016.10a_dict.pkl")
 RADIOML_HIGH_SNR_THRESHOLD = 10  # Train on SNR >= +10dB
 
 # Tactical Subset: 5 Digital Modulations Only

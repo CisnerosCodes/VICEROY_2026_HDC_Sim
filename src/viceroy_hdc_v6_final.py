@@ -63,7 +63,7 @@ warnings.filterwarnings('ignore')
 # CONFIGURATION CONSTANTS
 # =============================================================================
 
-RADIOML_PATH = "./.data/RML2016.10a_dict.pkl"
+RADIOML_PATH = os.path.join(os.path.dirname(__file__), "..", ".data", "RML2016.10a_dict.pkl")
 RADIOML_HIGH_SNR_THRESHOLD = 10  # Train on SNR >= +10dB
 
 # Tactical subset: 5 digital modulations for drone C2 defense

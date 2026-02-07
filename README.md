@@ -93,15 +93,15 @@ SNR range (−20 dB to +18 dB).
 We deployed on a cluster of **Dell Optiplex towers** (Intel i5-4590 CPUs)
 to simulate edge-compute constraints — no GPU, no cloud, no luxury. Code
 was pushed via SSH through a two-hop network (Laptop → Tower 1 → Tower 2)
-using the `deploy_to_tower2.ps1` script.
+using the `tools/deploy_to_tower2.ps1` script.
 
 ---
 
 ## 3. The Failure
 
-### The "Uh-Oh"
+### Unexpected Outcome
 
-**Initial results on the CPU were disappointing.**
+**Initial results on the CPU contradicted our hypothesis.**
 
 The Steel Man MLP achieved **83.9% accuracy** at high SNR while HDC
 trailed at **63.0%** with the same data and test conditions. The gap was
@@ -122,8 +122,9 @@ HDC inference was **slower** than the MLP — approximately 550 μs versus
 400 μs per sample. The reason: HDC with $D = 10{,}000$ generates internal
 vectors of 20,000 floats (sin + cos concatenation). On a von Neumann CPU,
 every inference requires streaming 20,000 × 5 = 100,000 floats through
-the memory hierarchy for the dot-product classification step. The massive
-vectors were **clogging the CPU cache**.
+the memory hierarchy for the dot-product classification step. The
+prototype vectors **exceeded the L2 cache capacity**, causing repeated
+cache evictions and memory-bound stalls.
 
 The MLP, by contrast, has only 74,048 total weights across its 4 layers
 (128×256 + 256×128 + 128×64 + 64×5), all fitting comfortably in L2 cache.
@@ -132,8 +133,8 @@ The MLP, by contrast, has only 74,048 total weights across its 4 layers
 
 > **HDC is mathematically robust, but physically slow on standard
 > von Neumann CPUs.** The high-dimensional vectors that give HDC its
-> noise tolerance are the same vectors that blow up the memory bandwidth
-> budget on conventional silicon.
+noise tolerance are the same vectors that saturate the memory bandwidth
+of conventional silicon.
 
 This was not a bug. It was a fundamental architectural mismatch.
 
@@ -141,10 +142,10 @@ This was not a bug. It was a fundamental architectural mismatch.
 
 ## 4. The Pivot
 
-### The "Aha!" Moment
+### Reframing the Problem
 
-We realized the bottleneck was not the algorithm — it was the hardware
-paradigm.
+Analysis of the latency breakdown revealed that the bottleneck was not
+the algorithm — it was the hardware paradigm.
 
 HDC is not *designed* for CPUs. It is designed for **In-Memory Computing
 (IMC)** — analog crossbar arrays where the dot-product between a query
@@ -162,7 +163,7 @@ they cost more *area* (which is cheap in memristor/PCM technology).
 
 ### What We Built
 
-We created `viceroy_hardware_emulation.py` — a **Digital Twin** of a
+We created `src/viceroy_hardware_emulation.py` — a **Digital Twin** of a
 neuromorphic IMC accelerator based on the IBM Hermes project
 (Karunaratne et al., *Nature Electronics*, 2020).
 
@@ -181,7 +182,7 @@ of a cleanly-trained model onto noisy analog silicon.
 
 ## 5. The Real Results
 
-### 5.1 Robustness: The Knockout Argument
+### 5.1 Robustness Under Hardware Defects
 
 We swept hardware defect rates from 0% to 20% (combined stuck-at +
 analog noise, 5 random trials each) and measured classification accuracy:
@@ -209,7 +210,7 @@ slightly noisier but structurally intact.
 
 ### 5.2 Energy: An Honest Assessment
 
-Here is the part where we *don't* cherry-pick.
+We present these results without selective omission.
 
 HDC with $D = 10{,}000$ uses **21× more MAC operations** per inference
 than the 3-layer MLP (1.58M vs 74K MACs). Even with the 6× analog
@@ -227,7 +228,8 @@ than MLP-on-CPU per inference:
 (6× gain, Karunaratne et al., 2020). MLP-on-IMC includes inter-layer ADC/DAC
 overhead (5 pJ/ADC + 1 pJ/DAC per layer boundary, Murmann ADC Survey 2023).*
 
-**On clean, perfect silicon, the MLP wins on energy. Period.**
+**On clean, defect-free silicon, the MLP is unambiguously more
+energy-efficient.**
 
 But silicon is never perfect. At a realistic 10% defect rate — the kind
 of noise floor that PCM devices exhibit after burn-in and thermal drift —
@@ -235,12 +237,14 @@ the MLP's accuracy collapses to 28.3%. Its energy efficiency becomes
 meaningless because **it is no longer producing correct answers**.
 
 > **The deployment argument is not "HDC is more efficient."
-> The deployment argument is "HDC is the only algorithm that works."**
+> The deployment argument is "HDC is the only algorithm that remains
+> functional."**
 
 On noisy IMC hardware, the MLP's superior energy efficiency is irrelevant
-because its outputs are garbage. HDC at 62.2% accuracy on a functioning
-but imperfect chip beats an MLP at 28.3% accuracy on the same chip, at
-any energy budget.
+because its outputs are **statistically indistinguishable from random
+classification**. HDC at 62.2% accuracy on a functioning but imperfect
+chip provides operationally useful predictions; an MLP at 28.3% on the
+same chip does not — regardless of its energy budget.
 
 ### 5.3 Adaptation Speed
 
@@ -259,28 +263,36 @@ learned classes.
 ```
 VICEROY_2026_HDC_Sim/
 │
-├── viceroy_hdc_v6_final.py          ← V6 FINAL: Algorithmic benchmark (CPU)
-│                                       HDC-RFF vs Steel Man MLP on RadioML
-│                                       Modes: --dim 10000 (Sniper), --dim 2000 (Scout)
+├── src/                                 ← Source code
+│   ├── viceroy_hdc_v6_final.py          ← V6 FINAL: Algorithmic benchmark (CPU)
+│   │                                       HDC-RFF vs Steel Man MLP on RadioML
+│   │                                       Modes: --dim 10000 (Sniper), --dim 2000 (Scout)
+│   ├── viceroy_hardware_emulation.py    ← DIGITAL TWIN: IMC hardware physics simulation
+│   │                                       HardwareDefectSimulator + EnergyModel
+│   │                                       Noise sweep, energy estimation, JSON output
+│   ├── viceroy_hdc_v5_benchmark.py      ← V5: Benchmark framework (predecessor to V6)
+│   ├── viceroy_hdc_v4_steelman.py       ← V4: RadioML integration + Steel Man MLP
+│   ├── viceroy_hdc_v3.py                ← V3: Scientific rigor update (synthetic data)
+│   ├── viceroy_hdc_v2.py                ← V2: Dual-doctrine EW scenarios
+│   └── viceroy_hdc_sim.py               ← V1: Original bit-flip noise model
 │
-├── viceroy_hardware_emulation.py    ← DIGITAL TWIN: IMC hardware physics simulation
-│                                       HardwareDefectSimulator + EnergyModel
-│                                       Noise sweep, energy estimation, JSON output
+├── results/                             ← Benchmark output (JSON)
+│   ├── hardware_emulation_results.json  ← Latest Digital Twin benchmark output
+│   ├── v6_final_test.json               ← V6 algorithmic benchmark results
+│   └── scout_test.json                  ← Scout-mode quick test results
 │
-├── viceroy_hdc_v5_benchmark.py      ← V5: Benchmark framework (predecessor to V6)
-├── viceroy_hdc_v4_steelman.py       ← V4: RadioML integration + Steel Man MLP
-├── viceroy_hdc_v3.py                ← V3: Scientific rigor update (synthetic data)
-├── viceroy_hdc_v2.py                ← V2: Dual-doctrine EW scenarios
-├── viceroy_hdc_sim.py               ← V1: Original bit-flip noise model
+├── figures/                             ← Generated plots (PNG/PDF)
+│   └── (V1–V5 visualizations)
 │
-├── deploy_to_tower2.ps1             ← Two-hop SSH deployment script (Laptop → T1 → T2)
-├── hardware_emulation_results.json  ← Latest Digital Twin benchmark output
-├── requirements.txt                 ← Dependencies: numpy, scikit-learn, matplotlib
-├── LICENSE                          ← MIT License
-├── README.md                        ← This file
+├── tools/                               ← Deployment and utility scripts
+│   └── deploy_to_tower2.ps1             ← Two-hop SSH deployment (Laptop → T1 → T2)
+│
+├── requirements.txt                     ← Dependencies: numpy, scikit-learn, matplotlib
+├── LICENSE                              ← MIT License
+├── README.md                            ← This file
 │
 └── .data/
-    └── RML2016.10a_dict.pkl         ← RadioML 2016.10A dataset (not in repo)
+    └── RML2016.10a_dict.pkl             ← RadioML 2016.10A dataset (not in repo)
 ```
 
 ### Version History (The Research Journey)
@@ -332,13 +344,13 @@ Download the RadioML 2016.10A dataset from
 
 ```bash
 # Sniper mode — high accuracy, slower (D=10,000, ~2 min training)
-python viceroy_hdc_v6_final.py --dim 10000 --epochs 20
+python src/viceroy_hdc_v6_final.py --dim 10000 --epochs 20
 
 # Scout mode — fast iteration (D=2,000, ~12s training)
-python viceroy_hdc_v6_final.py --dim 2000 --epochs 5
+python src/viceroy_hdc_v6_final.py --dim 2000 --epochs 5
 
 # Custom gamma sweep
-python viceroy_hdc_v6_final.py --dim 4000 --epochs 10 --gamma 0.5
+python src/viceroy_hdc_v6_final.py --dim 4000 --epochs 10 --gamma 0.5
 
 # Results saved to results.json (or specify --output filename.json)
 ```
@@ -347,19 +359,19 @@ python viceroy_hdc_v6_final.py --dim 4000 --epochs 10 --gamma 0.5
 
 ```bash
 # Default: Sniper config with 20% defect sweep
-python viceroy_hardware_emulation.py
+python src/viceroy_hardware_emulation.py
 
 # Custom configuration
-python viceroy_hardware_emulation.py --dim 10000 --epochs 20 --trials 10
+python src/viceroy_hardware_emulation.py --dim 10000 --epochs 20 --trials 10
 
-# Results saved to hardware_emulation_results.json
+# Results saved to results/hardware_emulation_results.json
 ```
 
 ### Deploy to Tower (Edge Hardware)
 
 ```powershell
 # Two-hop deployment: Laptop → Tower 1 → Tower 2
-.\deploy_to_tower2.ps1
+.\tools\deploy_to_tower2.ps1
 ```
 
 ---
