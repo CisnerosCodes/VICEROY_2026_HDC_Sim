@@ -226,7 +226,38 @@ def plot_hardware_robustness(hw, ax=None):
     ax.axhline(20, color=COLORS["chance"], linestyle=":", linewidth=1,
                label="Chance (20%)", zorder=1)
 
-    # Annotations
+    # --- Crossover Point: interpolate where HDC combined overtakes MLP combined ---
+    if mlp_sweep:
+        hdc_arr = np.array(combined_mean)
+        mlp_arr = np.array(mlp_combined_mean)
+        noise_arr = np.array(noise_pct)
+        diff = hdc_arr - mlp_arr  # negative when MLP leads, positive when HDC leads
+
+        # Find the interval where sign flips from negative to positive
+        crossover_x = None
+        crossover_y = None
+        for j in range(len(diff) - 1):
+            if diff[j] <= 0 and diff[j + 1] > 0:
+                # Linear interpolation within this interval
+                t = -diff[j] / (diff[j + 1] - diff[j])
+                crossover_x = noise_arr[j] + t * (noise_arr[j + 1] - noise_arr[j])
+                crossover_y = hdc_arr[j] + t * (hdc_arr[j + 1] - hdc_arr[j])
+                break
+
+        if crossover_x is not None:
+            ax.axvline(crossover_x, color="#888888", linestyle="--",
+                       linewidth=1.5, zorder=2)
+            ax.plot(crossover_x, crossover_y, "*", color="#333333",
+                    markersize=14, zorder=5)
+            ax.annotate(f"Mission-Critical\nCrossover (~{crossover_x:.0f}%)",
+                        xy=(crossover_x, crossover_y),
+                        xytext=(crossover_x - 6, crossover_y - 14),
+                        fontsize=9, color="#333333", fontweight="bold",
+                        ha="center",
+                        arrowprops=dict(arrowstyle="->", color="#333333",
+                                        lw=1.2))
+
+    # Annotations: total drop at max defect rate
     delta_hdc = combined_mean[0] - combined_mean[-1]
     ax.annotate(f"HDC: −{delta_hdc:.1f} pp",
                 xy=(noise_pct[-1], combined_mean[-1]),
