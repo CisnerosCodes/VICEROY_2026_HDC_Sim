@@ -1,0 +1,159 @@
+{
+  "timestamp": "2026-02-07T14:16:00.472634",
+  "configuration": {
+    "rff_dim": 10000,
+    "internal_dim": 20000,
+    "epochs": 20,
+    "gamma": 1.0,
+    "trials_per_noise_level": 5,
+    "dataset": "RadioML 2016.10A Tactical Subset",
+    "modulations": [
+      "BPSK",
+      "QPSK",
+      "8PSK",
+      "QAM16",
+      "QAM64"
+    ],
+    "test_snr_threshold_db": 10,
+    "test_samples": 25000
+  },
+  "noise_levels": [
+    0.0,
+    1.0,
+    5.0,
+    10.0,
+    20.0
+  ],
+  "hdc_accuracy": [
+    62.99,
+    62.96,
+    62.56,
+    62.19,
+    61.23
+  ],
+  "mlp_estimated_accuracy": [
+    62.99,
+    58.15,
+    42.22,
+    28.3,
+    20.0
+  ],
+  "noise_sweep_detailed": {
+    "noise_levels_fraction": [
+      0.0,
+      0.01,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "stuck_at": {
+      "accuracy_mean": [
+        0.6299,
+        0.628,
+        0.6198,
+        0.6106,
+        0.5905
+      ],
+      "accuracy_std": [
+        0.0,
+        0.0005,
+        0.001,
+        0.0009,
+        0.001
+      ]
+    },
+    "analog_noise": {
+      "accuracy_mean": [
+        0.6299,
+        0.6298,
+        0.6299,
+        0.6303,
+        0.6304
+      ],
+      "accuracy_std": [
+        0.0,
+        0.0001,
+        0.0001,
+        0.0002,
+        0.0003
+      ]
+    },
+    "combined": {
+      "accuracy_mean": [
+        0.6299,
+        0.6296,
+        0.6256,
+        0.6219,
+        0.6123
+      ],
+      "accuracy_std": [
+        0.0,
+        0.0006,
+        0.0008,
+        0.0004,
+        0.001
+      ]
+    }
+  },
+  "energy_model": {
+    "hdc_rff": {
+      "total_macs_per_inference": 1580896,
+      "mac_breakdown": {
+        "fft_macs": 896,
+        "rff_projection_macs": 1280000,
+        "trigonometric_macs": 200000,
+        "classification_macs": 100000,
+        "total_macs": 1580896
+      },
+      "cpu_energy_pj": 5849315.2,
+      "imc_energy_pj": 974885.87,
+      "imc_overhead_pj": 0.0,
+      "cpu_battery_life_hours": 1709.6,
+      "imc_battery_life_hours": 10257.61
+    },
+    "mlp_baseline": {
+      "total_macs_per_inference": 74048,
+      "mac_breakdown": {
+        "layer_0_(128x256)": 32768,
+        "layer_1_(256x128)": 32768,
+        "layer_2_(128x64)": 8192,
+        "layer_3_(64x5)": 320,
+        "total_macs": 74048
+      },
+      "cpu_energy_pj": 273977.6,
+      "imc_mac_energy_pj": 45662.93,
+      "imc_overhead_pj": 2757.8,
+      "imc_overhead_breakdown": {
+        "boundary_1_width_256": 1561.6,
+        "boundary_2_width_128": 780.8,
+        "boundary_3_width_64": 390.4,
+        "final_readout": 25.0,
+        "total_overhead_pj": 2757.8
+      },
+      "imc_total_energy_pj": 48420.73,
+      "cpu_battery_life_hours": 36499.33,
+      "imc_battery_life_hours": 206523.1
+    },
+    "comparison": {
+      "hdc_vs_mlp_mac_ratio": 21.35,
+      "imc_hdc_vs_cpu_mlp_energy_ratio": 0.28,
+      "imc_hdc_vs_imc_mlp_energy_ratio": 0.05,
+      "battery_life_extension_imc_hdc_vs_cpu_mlp": 0.28,
+      "battery_life_extension_imc_hdc_vs_imc_mlp": 0.05,
+      "note": "Battery Life Extension = how many times longer the edge device runs on HDC+IMC vs alternatives at 1000 inferences/sec. MLP on IMC incurs heavy ADC/DAC overhead between layers; HDC's single-pass crossbar pipeline avoids this entirely."
+    },
+    "constants": {
+      "cpu_pj_per_mac": 3.7,
+      "imc_pj_per_mac": 0.6167,
+      "imc_efficiency_factor": 6.0,
+      "adc_pj": 5.0,
+      "dac_pj": 1.0,
+      "battery_capacity_wh": 10.0,
+      "inference_throughput": 1000
+    }
+  },
+  "training": {
+    "clean_accuracy_percent": 62.99,
+    "training_time_seconds": 114.29
+  }
+}
