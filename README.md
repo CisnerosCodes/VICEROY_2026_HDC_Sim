@@ -20,8 +20,9 @@
 5. [The Real Results](#5-the-real-results)
 6. [Repository Map](#6-repository-map)
 7. [How to Run](#7-how-to-run)
-8. [References](#8-references)
-9. [Citation](#9-citation)
+8. [Conclusion & Future Directions](#8-conclusion--future-directions)
+9. [References](#9-references)
+10. [Citation](#10-citation)
 
 ---
 
@@ -185,28 +186,29 @@ of a cleanly-trained model onto noisy analog silicon.
 ### 5.1 Robustness Under Hardware Defects
 
 We swept hardware defect rates from 0% to 20% (combined stuck-at +
-analog noise, 5 random trials each) and measured classification accuracy:
+analog noise, 5 random trials each) and measured classification accuracy.
+Both models were tested with the **same** `HardwareDefectSimulator` —
+MLP weights (`coefs_` + `intercepts_`) were corrupted identically to HDC
+prototypes. No estimation; all measurements are empirical.
 
-| Defect Rate | HDC Accuracy | MLP Estimated † | Δ (HDC − MLP) |
-|:-----------:|:------------:|:---------------:|:-------------:|
-| 0% | 63.0% | 63.0% | +0.0 pp |
-| 1% | 63.0% | 58.1% | **+4.8 pp** |
-| 5% | 62.6% | 42.2% | **+20.3 pp** |
-| 10% | 62.2% | 28.3% | **+33.9 pp** |
-| 20% | 61.2% | 20.0% | **+41.2 pp** |
+| Defect Rate | HDC Accuracy | MLP Accuracy | Δ (HDC − MLP) |
+|:-----------:|:------------:|:------------:|:-------------:|
+| 0% (clean) | 63.0% | 83.9% | −20.9 pp |
+| 1% | 63.0% | 82.1% | −19.2 pp |
+| 5% | 62.6% | 74.2% | −11.6 pp |
+| 10% | 62.2% | 68.7% | −6.5 pp |
+| **20%** | **61.2%** | **55.2%** | **+6.0 pp** |
 
 > **HDC dropped 1.8 percentage points at 20% hardware defects.**
-> The MLP collapsed to random chance.
-
-† MLP degradation curve estimated from Ganapathy et al. (DAC 2019) and
-Liu et al. (MLSys 2021). Deep learning weights degrade exponentially
-under stuck-at and conductance drift faults because errors propagate
-multiplicatively through sequential layers.
+> The MLP dropped 28.7 percentage points under identical conditions.
+> HDC overtakes MLP in absolute accuracy between 10–20% defect rates.
 
 HDC prototypes survive because information is *distributed* across all
 20,000 dimensions. Zeroing out 20% of a prototype is like erasing 20% of
 a hologram — the remaining 80% still reconstructs the full pattern,
-slightly noisier but structurally intact.
+slightly noisier but structurally intact. MLP weights, by contrast, are
+highly precise and interdependent — corruption propagates multiplicatively
+through sequential layers.
 
 ### 5.2 Energy: An Honest Assessment
 
@@ -233,18 +235,19 @@ energy-efficient.**
 
 But silicon is never perfect. At a realistic 10% defect rate — the kind
 of noise floor that PCM devices exhibit after burn-in and thermal drift —
-the MLP's accuracy collapses to 28.3%. Its energy efficiency becomes
-meaningless because **it is no longer producing correct answers**.
+the MLP has already lost 15.2 percentage points (83.9% → 68.7%), while
+HDC has lost only 0.8 pp (63.0% → 62.2%). At 20% defects, the gap
+inverts entirely: HDC at 61.2% overtakes MLP at 55.2%.
 
 > **The deployment argument is not "HDC is more efficient."
-> The deployment argument is "HDC is the only algorithm that remains
-> functional."**
+> The deployment argument is "HDC degrades gracefully while the MLP's
+> accuracy erodes at 16× the rate."**
 
-On noisy IMC hardware, the MLP's superior energy efficiency is irrelevant
-because its outputs are **statistically indistinguishable from random
-classification**. HDC at 62.2% accuracy on a functioning but imperfect
-chip provides operationally useful predictions; an MLP at 28.3% on the
-same chip does not — regardless of its energy budget.
+On degraded IMC hardware, the MLP's superior clean-silicon energy
+efficiency is undermined by accelerating accuracy loss. HDC at 62.2%
+accuracy on a functioning but imperfect chip provides operationally
+stable predictions; an MLP losing nearly 1 pp per percentage point of
+defects is on a trajectory toward unreliability.
 
 ### 5.3 Adaptation Speed
 
@@ -376,7 +379,45 @@ python src/viceroy_hardware_emulation.py --dim 10000 --epochs 20 --trials 10
 
 ---
 
-## 8. References
+## 8. Conclusion & Future Directions
+
+Ultimately, this project did not dethrone Deep Learning. The Steel Man
+MLP remains the superior classifier for clean, high-SNR environments
+(83.9% vs 63.0%). We pushed HDC to its limits with RFF encoding and
+iterative learning, but the accuracy gap on pristine hardware remains
+significant.
+
+However, we successfully exposed a critical vulnerability in the current
+state of the art: **Deep Learning is brittle.** Our hardware simulation
+— using the *same* defect simulator on both architectures — proved that
+standard neural networks degrade at 16× the rate of HDC under the
+conditions most likely to occur in electronic warfare: voltage scaling,
+thermal noise, and hardware defects. At 20% combined defects, the MLP
+lost 28.7 pp while HDC lost only 1.8 pp.
+
+**The Verdict:** HDC is not the total solution, but it is a necessary
+piece of the puzzle. The future of drone defense likely lies not in
+choosing between these architectures, but in **Hybrid Neuro-Symbolic
+Systems** — using Deep Learning for precision and HDC for survival.
+
+This trade-off demands further investigation. Promising directions
+include:
+
+- **Hybrid HDC–MLP cascades** — MLP handles clean conditions; HDC
+  activates as a fallback when hardware self-test detects degradation.
+- **Hardware-aware training** — injecting realistic noise during
+  MLP training to improve its defect tolerance.
+- **Sparse HDC encodings** — reducing the 21× MAC overhead without
+  sacrificing robustness.
+- **On-chip adaptation** — leveraging HDC's single-shot learning for
+  real-time threat updates in contested RF environments.
+
+We release this work — including our failures — so that others can build
+on it.
+
+---
+
+## 9. References
 
 1. **O'Shea, T. J., & Corgan, J.** (2016). "Convolutional Radio Modulation
    Recognition Networks." *arXiv:1602.04105*. — RadioML 2016.10A dataset.
@@ -407,7 +448,7 @@ python src/viceroy_hardware_emulation.py --dim 10000 --epochs 20 --trials 10
 
 ---
 
-## 9. Citation
+## 10. Citation
 
 ```bibtex
 @misc{viceroy2026hdc,
