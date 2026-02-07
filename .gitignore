@@ -77,6 +77,9 @@ venv.bak/
 Thumbs.db
 
 # Project specific
+# RadioML dataset (641 MB - too large for GitHub)
+.data/
+
 # Keep generated visualizations for the repo
 # !viceroy_2026_*.png
 # !viceroy_2026_*.pdf
